@@ -12,9 +12,10 @@ Model name is converted to lowercase for the collection name:
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
 
-# Example schemas (replace with your own):
+# Example schemas (you can keep these alongside your own)
 
 class User(BaseModel):
     """
@@ -38,8 +39,32 @@ class Product(BaseModel):
     category: str = Field(..., description="Product category")
     in_stock: bool = Field(True, description="Whether product is in stock")
 
-# Add your own schemas here:
-# --------------------------------------------------
+# NovaCall core schemas
+
+class CallTask(BaseModel):
+    """
+    Outbound call task created for NovaCall to execute
+    Collection: "calltask"
+    """
+    target_phone: str = Field(..., description="E.164 formatted target phone number")
+    intent: str = Field(..., description="Purpose of the call in one sentence")
+    script: Optional[str] = Field(None, description="Full conversation script if provided")
+    talking_points: Optional[List[str]] = Field(None, description="Key talking points to cover")
+    fallback_conditions: Optional[List[str]] = Field(None, description="Triggers for escalation/transfer")
+    voice_model_id: str = Field(..., description="Pre-trained voice model ID for Manohar's voice")
+    consent_required: bool = Field(False, description="Whether to play a recording disclaimer")
+    status: str = Field("pending", description="Call status: pending|in_progress|completed|failed|transferred")
+
+class TranscriptLog(BaseModel):
+    """
+    Per-utterance transcript log for a given call
+    Collection: "transcriptlog"
+    """
+    call_id: str = Field(..., description="Associated call task ID")
+    role: str = Field(..., description="speaker role: assistant|callee|system")
+    text: str = Field(..., description="transcribed content or system note")
+    timestamp: Optional[datetime] = Field(default=None, description="UTC timestamp of the utterance")
+    outcome: Optional[str] = Field(default=None, description="Final outcome if this entry ends the call")
 
 # Note: The Flames database viewer will automatically:
 # 1. Read these schemas from GET /schema endpoint
