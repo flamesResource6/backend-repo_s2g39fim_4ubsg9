@@ -1,11 +1,12 @@
 import os
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime, timezone
+import asyncio
 
-from database import db, create_document, get_documents
+from database import db, create_document, get_documents, update_document_by_id, get_document_by_id
 from schemas import CallTask, TranscriptLog, User, Product
 
 app = FastAPI(title="NovaCall Backend")
@@ -74,11 +75,52 @@ def get_schema_definitions():
     return SchemaResponse(schemas=["user", "product", "calltask", "transcriptlog"])
 
 
+# ---- NovaCall: Background simulation (placeholder for real telephony) ----
+async def simulate_call_flow(call_id: str):
+    """Simulate an outbound call by logging a few transcript steps and updating status.
+    This is a stand-in until a real telephony/voice provider is integrated.
+    """
+    # Mark in-progress
+    update_document_by_id("calltask", call_id, {"status": "in_progress"})
+
+    # Fetch task to tailor messages
+    task = get_document_by_id("calltask", call_id) or {}
+    intent = task.get("intent", "the stated purpose")
+    voice = task.get("voice_model_id", "manohar-voice-v1")
+
+    steps = [
+        ("system", f"Dialing target {task.get('target_phone', '')} using voice model {voice} ..."),
+        ("assistant", "Hello! This is Nova calling on behalf of Manohar. Is now a good time?"),
+        ("callee", "Yes, I have a minute."),
+        ("assistant", f"Great. The purpose of my call is {intent}."),
+    ]
+
+    for role, text in steps:
+        log = TranscriptLog(call_id=call_id, role=role, text=text, timestamp=datetime.now(timezone.utc))
+        create_document("transcriptlog", log)
+        await asyncio.sleep(0.6)
+
+    # Finish
+    create_document(
+        "transcriptlog",
+        TranscriptLog(
+            call_id=call_id,
+            role="system",
+            text="Call completed successfully.",
+            timestamp=datetime.now(timezone.utc),
+            outcome="completed",
+        ),
+    )
+    update_document_by_id("calltask", call_id, {"status": "completed"})
+
+
 # ---- NovaCall: Call task creation & logging ----
 @app.post("/api/call-tasks")
-def create_call_task(payload: CallTask):
+def create_call_task(payload: CallTask, background_tasks: BackgroundTasks):
     try:
         call_id = create_document("calltask", payload)
+        # Auto-start simulated call in background (replace with real call integration later)
+        background_tasks.add_task(asyncio.run, simulate_call_flow(call_id))
         return {"id": call_id, "status": "queued"}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(e))
